@@ -109,3 +109,15 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+# Apple crap
+.DS_Store
+
+# Emacs crap
+*~
+
+# Data files
+*.root
+
+# Stuff to play with tensorflow
+test.py
