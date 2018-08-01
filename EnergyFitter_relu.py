@@ -52,7 +52,7 @@ fig.suptitle("Enu")
 ax.set_ylabel("Event")
 ax.set_xlabel("Enu [MeV]")
 plt.hist(x=clustering_df.ENu, bins=10, range=[0,50])
-fig.savefig("Enu_Hist.pdf")
+fig.savefig("relu/Enu_Hist.pdf")
 
 train_size = 0.5
 crossval_size = 0.25
@@ -92,12 +92,12 @@ def NeuralNetworkOneHiddenLayer(x, weights, biases):
 
 bins = np.linspace(0, 50, 51)
 layer_array=[10,20,30,50,100,200]
-#  layer_array=[10,20,30]
-# if debug:
-layer_array=[50]
+#layer_array=[10,20,30]
+#if debug:
+#layer_array=[50]
 cost_after_min={}
 learning_rates={10:0.0001,20:0.0001,30:0.0001,50:0.0001,100:0.0001,200:0.0001}
-number_iter={10:20000,20:40000,30:60000,50:1000,100:200000,200:200000}
+number_iter={10:2000,20:4000,30:6000,50:10000,100:20000,200:20000}
 previous_cost=10000000
 train_output={}
 
@@ -175,7 +175,7 @@ for n_hidden in layer_array:
         trainplot = plt.semilogy(range(len(cost_train_arr)), cost_train_arr, 'o-')
         crossplot = plt.semilogy(range(len(cost_cross_arr)), cost_cross_arr, 'o-')
         plt.legend([trainplot[0], crossplot[0]], ('Training set', 'Cross validation set'))
-        fig.savefig("Cost_nhid%d.pdf" %n_hidden)
+        fig.savefig("relu/Cost_nhid%d.pdf" %n_hidden)
 
         pred_cross = sess.run(predictions_nn, feed_dict={x: x_cross})
 
@@ -186,11 +186,11 @@ for n_hidden in layer_array:
         train_output[n_hidden]['true']      = np.float32(TransformToReal(y_cross[:,0]   , y_mean,y_stddev))
         fig, ax = plt.subplots(figsize=(20, 12))
         plt.hist(x=y_cross[:,0], bins=10, range=[0,50])
-        fig.savefig("Enu_Hist2.pdf")
+        fig.savefig("relu/Enu_Hist2.pdf")
 
         fig, ax = plt.subplots(figsize=(20, 12))
         plt.hist(x=train_output[n_hidden]['true'], bins=10, range=[0,50])
-        fig.savefig("Enu_Hist3.pdf")
+        fig.savefig("relu/Enu_Hist3.pdf")
 
 
         digitized = np.digitize(train_output[n_hidden]['true'], bins)
@@ -211,7 +211,7 @@ for n_hidden, output in train_output.items():
     plt.hist2d(output['true'],output['predicted'], bins=100, range=[[0,100],[0,100]],norm=colors.LogNorm())
     plt.colorbar()
     plt.grid(True)
-    fig.savefig("Smearing_%d.pdf"%n_hidden)
+    fig.savefig("relu/Smearing_%d.pdf"%n_hidden)
 
     
 for n_hidden, output in train_output.items():
@@ -221,7 +221,7 @@ for n_hidden, output in train_output.items():
     ax.set_ylabel('E Reco [MeV]')
     sns.regplot(x=output['true_binned'],y=output['predicted'],x_bins=bins, fit_reg=None)
     plt.grid(True)
-    fig.savefig("Profile_%d.pdf"%n_hidden)
+    fig.savefig("relu/Profile_%d.pdf"%n_hidden)
 
 fig, (axs1,axs2) = plt.subplots(2, 1, sharex='col',figsize=(20, 12))
 fig.subplots_adjust(hspace=0)
@@ -242,7 +242,7 @@ for n_hidden, output in  train_output.items():
 plt.grid(True)
 plt.xlabel('E True [MeV]')
 plt.ylabel('Bias (Reco-True) [MeV]')
-fig.savefig("ErrorAndBias.pdf")
+fig.savefig("relu/ErrorAndBias.pdf")
        
 fig, ax = plt.subplots(figsize=(20, 12))
 fig.suptitle("Cost")
@@ -251,4 +251,4 @@ ax.set_ylabel("Cost")
 keys = np.fromiter(cost_after_min.keys(), dtype=float)
 vals = np.fromiter(cost_after_min.values(), dtype=float)
 plt.plot(keys,vals, 'o-')
-fig.savefig("CostsVSLayers.pdf")
+fig.savefig("relu/CostsVSLayers.pdf")
