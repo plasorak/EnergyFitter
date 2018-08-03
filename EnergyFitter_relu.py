@@ -93,7 +93,7 @@ def NeuralNetworkOneHiddenLayer(x, weights, biases):
 bins = np.linspace(0, 50, 51)
 layer_array=[10,20,30,50,100,200]
 #layer_array=[10,20,30]
-#if debug:
+# if debug:
 #layer_array=[50]
 cost_after_min={}
 learning_rates={10:0.0001,20:0.0001,30:0.0001,50:0.0001,100:0.0001,200:0.0001}
