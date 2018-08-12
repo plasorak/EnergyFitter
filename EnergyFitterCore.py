@@ -76,9 +76,11 @@ class EnergyFitterCore:
         return x*rms+mean
 
     def Predictor(self, x, weights, biases):
-        layer_1 = tf.add(tf.matmul(x, weights['h1']), biases['b1'])
+        layer_1 = tf.matmul(x, weights['h1'])
+        layer_1 = tf.add(layer_1, biases['b1'])
         layer_1 = tf.nn.relu(layer_1)
-        out_layer = tf.matmul(layer_1, weights['out']) + biases['out']
+        out_layer = tf.matmul(layer_1, weights['out'])
+        out_layer = out_layer + biases['out']
         return out_layer
     
     def InitialiseInputData(self):
@@ -215,10 +217,10 @@ class EnergyFitterCore:
                 if epoch % self.DisplayStep == 0 or self.Debug:
                     print("Epoch:", '%06d' % (epoch), "cost=", "{:.9f}".format(avg_cost))
 
-            self.finalweights['h1']  = sess.run(self.biases['b1']) 
-            self.finalweights['out'] = sess.run(self.biases['out'])
-            self.finalbias   ['b1']  = sess.run(self.weights['h1'])
-            self.finalbias   ['out'] = sess.run(self.weights['out'])
+            self.finalweights['h1']  = sess.run(self.weights['h1']) 
+            self.finalweights['out'] = sess.run(self.weights['out'])
+            self.finalbias   ['b1']  = sess.run(self.biases['b1'])
+            self.finalbias   ['out'] = sess.run(self.biases['out'])
             print("Optimization for", '%d' %self.nNeuron, " neurons finished!")
             self.DoneMinimisation=True
             
@@ -262,17 +264,17 @@ class EnergyFitterCore:
         print("finalbias   ['out'].shape", self.finalbias   ['out'].shape)
 
         i=0;
-        for v in self.finalweights['h1']:
+        for v in self.finalbias['b1']:
             filexml.NewChild(weight_h1, 0, "Layer_1_"+str(i), str('%25.20f' % (v)));
             i+=1
             
         i=0;
-        for v in self.finalweights['out']:
+        for v in self.finalbias['out']:
             filexml.NewChild(weight_out, 0, "Layer_1_"+str(i), str('%25.20f' % (v)));
             i+=1
             
         i=0;
-        for v in self.finalbias['b1']:
+        for v in self.finalweights['h1']:
             thisparam=filexml.NewChild(bias_b1, 0, "Param_"+str(i));
             i+=1
             j=0
@@ -281,7 +283,7 @@ class EnergyFitterCore:
                 j+=1
                 
         i=0;
-        for v in self.finalbias['out']:
+        for v in self.finalweights['out']:
             filexml.NewChild(bias_out, 0, "Layer_1_"+str(i), str('%25.20f' % (v)));
             i+=1
 
