@@ -124,6 +124,9 @@ class EnergyFitterCore:
 
         if self.DoNormalisation:
             print("Renormalising the data")
+            for i in range(0,4):
+                print(i, self.x_mean[i])
+                print(i, self.x_stddev[i])
             self.x_train = np.float32([np.float32(self.TransformToNormalised(self.x_train[:,i], self.x_mean[i], self.x_stddev[i])) for i in range(0,4)])
             self.x_cross = np.float32([np.float32(self.TransformToNormalised(self.x_cross[:,i], self.x_mean[i], self.x_stddev[i])) for i in range(0,4)])
             self.x_test  = np.float32([np.float32(self.TransformToNormalised(self.x_test [:,i], self.x_mean[i], self.x_stddev[i])) for i in range(0,4)])
@@ -133,20 +136,26 @@ class EnergyFitterCore:
             self.y_train = np.float32(self.TransformToNormalised(self.y_train, self.y_mean, self.y_stddev))
             self.y_cross = np.float32(self.TransformToNormalised(self.y_cross, self.y_mean, self.y_stddev))
             self.y_test  = np.float32(self.TransformToNormalised(self.y_test , self.y_mean, self.y_stddev))
-
-
+            
         print("x_cross.shape",self.x_cross.shape)
         print("y_cross.shape",self.y_cross.shape)
         print("x_train.shape",self.x_train.shape)
         print("y_train.shape",self.y_train.shape)
         print("x_test .shape",self.x_test .shape)
         print("y_test .shape",self.y_test .shape)
-
-
             
         print("Finished instantiating the data")
         self.DoneInputDataInitialisation=True
-            
+
+
+
+
+
+
+
+
+
+        
     def Train(self):
         n_input = self.x_train.shape[1]
         print ("n_input",n_input)
@@ -186,8 +195,6 @@ class EnergyFitterCore:
                     print("weights[out] ", sess.run(self.weights['out']))
                 avg_cost = 0.0
                 total_batch = int(len(self.x_train) / self.BatchSize)
-                print("len(self.x_train)",len(self.x_train))
-                print("Batch size",self.BatchSize)
                 #x_batches = np.array_split(x_train, total_batch)
                 #y_batches = np.array_split(y_train, total_batch)
                 x_batch = self.x_train
@@ -195,8 +202,6 @@ class EnergyFitterCore:
                 #for i in range(total_batch):
                 #batch_x, batch_y = x_batches[i], y_batches[i]
 
-                print(x_batch.shape)
-                print(y_batch.shape)
                 _, c_train, pred = sess.run([optimizer, cost, predictions], feed_dict={x: x_batch, y: y_batch})
 
                 if self.Debug:
@@ -205,13 +210,11 @@ class EnergyFitterCore:
                     print("len ctrain ", c_train.shape)
                     print("len pred ",   pred.shape)
 
-                print("x_cross.shape",self.x_cross.shape)
-                print("y_cross.shape",self.y_cross.shape)
                 c_cross, _ = sess.run([cost, predictions], feed_dict={x: self.x_cross, y: self.y_cross})
+                
                 
                 self.CrossValidationCost.append(c_cross)
                 self.TrainCost          .append(c_train)
-                print("total_batch",total_batch)
                 avg_cost += c_train / total_batch
                 
                 if epoch % self.DisplayStep == 0 or self.Debug:
@@ -222,7 +225,35 @@ class EnergyFitterCore:
             self.finalbias   ['b1']  = sess.run(self.biases['b1'])
             self.finalbias   ['out'] = sess.run(self.biases['out'])
             print("Optimization for", '%d' %self.nNeuron, " neurons finished!")
+            # x_testing = np.transpose(np.float32(range(1,4)))
+            x_testing = np.float32([8,7,1000,1])
+            x_testing = np.float32(self.TransformToNormalised(x_testing,
+                                                              np.float32(self.x_mean),
+                                                              np.float32(self.x_stddev)))
+            
+            x_testing = [x_testing]
+            y_testing = np.float32(range(0,1))
+            y_testing = [y_testing]
+            layer_1 = np.matmul(x_testing,self.finalweights['h1'])
+            layer_1 += self.finalbias['b1']
+            for i in range(0,100):
+                layer_1[0,i] = max(0.,layer_1[0,i])
+            out_layer = np.matmul(layer_1,self.finalweights['out'])
+            out_layer += self.finalbias['out']
+            _, pred = sess.run([cost, predictions], feed_dict={x: x_testing, y: y_testing})
+
+            print("Predictions for test cluster (unnormalised):" , pred)
+            pred = self.TransformToReal(pred,self.y_mean,self.y_stddev)
+            print("Predictions for test cluster:" , pred)
             self.DoneMinimisation=True
+
+
+
+
+
+
+
+
             
     def ExportXML(self, name):
         if not self.DoneMinimisation:
@@ -265,17 +296,17 @@ class EnergyFitterCore:
 
         i=0;
         for v in self.finalbias['b1']:
-            filexml.NewChild(weight_h1, 0, "Layer_1_"+str(i), str('%25.20f' % (v)));
+            filexml.NewChild(bias_b1, 0, "Layer_1_"+str(i), str('%25.20f' % (v)));
             i+=1
             
         i=0;
         for v in self.finalbias['out']:
-            filexml.NewChild(weight_out, 0, "Layer_1_"+str(i), str('%25.20f' % (v)));
+            filexml.NewChild(bias_out, 0, "Layer_1_"+str(i), str('%25.20f' % (v)));
             i+=1
             
         i=0;
         for v in self.finalweights['h1']:
-            thisparam=filexml.NewChild(bias_b1, 0, "Param_"+str(i));
+            thisparam=filexml.NewChild(weight_h1, 0, "Param_"+str(i));
             i+=1
             j=0
             for w in v:
@@ -284,7 +315,7 @@ class EnergyFitterCore:
                 
         i=0;
         for v in self.finalweights['out']:
-            filexml.NewChild(bias_out, 0, "Layer_1_"+str(i), str('%25.20f' % (v)));
+            filexml.NewChild(weight_out, 0, "Layer_1_"+str(i), str('%25.20f' % (v)));
             i+=1
 
         xmldoc = filexml.NewDoc();
