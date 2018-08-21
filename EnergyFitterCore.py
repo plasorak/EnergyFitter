@@ -50,6 +50,7 @@ class EnergyFitterCore:
         self.CrossValidationCost = []
         self.TrainCost = []
         self.TestCost = 0
+        self.Feature = []
         
         self.x_cross = np.zeros(1)
         self.y_cross = np.zeros(1)
@@ -57,6 +58,11 @@ class EnergyFitterCore:
         self.y_train = np.zeros(1)
         self.x_test  = np.zeros(1)
         self.y_test  = np.zeros(1)
+        self.FinalPredictionCrossVal = np.zeros(1)
+
+        self.tf = tf
+        self.x = self.tf.placeholder("float", [None, 4])
+        self.y = self.tf.placeholder("float", [None, 1])
         
         self.x_mean   = np.zeros(4)
         self.x_stddev = np.ones(4)
@@ -76,10 +82,10 @@ class EnergyFitterCore:
         return x*rms+mean
 
     def Predictor(self, x, weights, biases):
-        layer_1 = tf.matmul(x, weights['h1'])
-        layer_1 = tf.add(layer_1, biases['b1'])
-        layer_1 = tf.nn.relu(layer_1)
-        out_layer = tf.matmul(layer_1, weights['out'])
+        layer_1 = self.tf.matmul(x, weights['h1'])
+        layer_1 = self.tf.add(layer_1, biases['b1'])
+        layer_1 = self.tf.nn.relu(layer_1)
+        out_layer = self.tf.matmul(layer_1, weights['out'])
         out_layer = out_layer + biases['out']
         return out_layer
     
@@ -101,6 +107,8 @@ class EnergyFitterCore:
         train_x['NHits']     = np.float32(self.InputData.NHits    )
         train_x['SumADC']    = np.float32(self.InputData.SumADC   )
         train_x['TimeWidth'] = np.float32(self.InputData.TimeWidth)
+        for key, dum in train_x.items():
+            self.Feature.append(key)
         train_x = pd.concat([train_x], axis=1)
 
         train_y = pd.DataFrame()
@@ -149,38 +157,39 @@ class EnergyFitterCore:
 
 
 
-
-
+    def InitialiseFitParameter(self):
+        n_input = self.x_train.shape[1]
+        print ("n_input",n_input)
+        n_classes = 1
+        
+        self.weights = {
+            'h1':  self.tf.Variable(self.tf.random_normal([n_input, self.nNeuron])),
+            'out': self.tf.Variable(self.tf.random_normal([self.nNeuron, n_classes]))
+        }
+        
+        self.biases = {
+            'b1':  self.tf.Variable(self.tf.random_normal([self.nNeuron])),
+            'out': self.tf.Variable(self.tf.random_normal([n_classes]))
+        }
+        
+        
+        self.x = self.tf.placeholder("float", [None, n_input])
+        self.y = self.tf.placeholder("float", [None, n_classes])
+        
 
 
 
 
         
     def Train(self):
-        n_input = self.x_train.shape[1]
-        print ("n_input",n_input)
-        n_classes = 1
-        
-        self.weights = {
-            'h1': tf.Variable(tf.random_normal([n_input, self.nNeuron])),
-            'out': tf.Variable(tf.random_normal([self.nNeuron, n_classes]))
-        }
-        
-        self.biases = {
-            'b1': tf.Variable(tf.random_normal([self.nNeuron])),
-            'out': tf.Variable(tf.random_normal([n_classes]))
-        }
-        
-        
-        x = tf.placeholder("float", [None, n_input])
-        y = tf.placeholder("float", [None, n_classes])
-        
-        predictions = self.Predictor(x, self.weights, self.biases)
-        cost = tf.reduce_mean(tf.losses.mean_squared_error(predictions=predictions, labels=y))
-        optimizer = tf.train.AdamOptimizer(learning_rate=self.LearningRate).minimize(cost)
 
-        with tf.Session() as sess:
-            sess.run(tf.global_variables_initializer())
+        self.InitialiseFitParameter()
+        predictions = self.Predictor(self.x, self.weights, self.biases)
+        cost = self.tf.reduce_mean(self.tf.losses.mean_squared_error(predictions=predictions, labels=self.y))
+        optimizer = self.tf.train.AdamOptimizer(learning_rate=self.LearningRate).minimize(cost)
+
+        with self.tf.Session() as sess:
+            sess.run(self.tf.global_variables_initializer())
             
             print("Optimization for", '%d' %self.nNeuron, " neurons starting!")
 
@@ -202,7 +211,7 @@ class EnergyFitterCore:
                 #for i in range(total_batch):
                 #batch_x, batch_y = x_batches[i], y_batches[i]
 
-                _, c_train, pred = sess.run([optimizer, cost, predictions], feed_dict={x: x_batch, y: y_batch})
+                _, c_train, pred = sess.run([optimizer, cost, predictions], feed_dict={self.x: x_batch, self.y: y_batch})
 
                 if self.Debug:
                     print("ctrain ", c_train)
@@ -210,7 +219,7 @@ class EnergyFitterCore:
                     print("len ctrain ", c_train.shape)
                     print("len pred ",   pred.shape)
 
-                c_cross, _ = sess.run([cost, predictions], feed_dict={x: self.x_cross, y: self.y_cross})
+                c_cross, _ = sess.run([cost, predictions], feed_dict={self.x: self.x_cross, self.y: self.y_cross})
                 
                 
                 self.CrossValidationCost.append(c_cross)
@@ -220,13 +229,14 @@ class EnergyFitterCore:
                 if epoch % self.DisplayStep == 0 or self.Debug:
                     print("Epoch:", '%06d' % (epoch), "cost=", "{:.9f}".format(avg_cost))
 
-            self.finalweights['h1']  = sess.run(self.weights['h1']) 
-            self.finalweights['out'] = sess.run(self.weights['out'])
-            self.finalbias   ['b1']  = sess.run(self.biases['b1'])
-            self.finalbias   ['out'] = sess.run(self.biases['out'])
+            self.finalweights = sess.run(self.weights) 
+            self.finalbias    = sess.run(self.biases )
             print("Optimization for", '%d' %self.nNeuron, " neurons finished!")
-            # x_testing = np.transpose(np.float32(range(1,4)))
-            x_testing = np.float32([8,7,1000,1])
+            self.FinalPredictionCrossVal = sess.run(predictions, feed_dict={self.x: self.x_cross})
+            self.DoneMinimisation=True
+
+
+    def Validate(self,x_testing):
             x_testing = np.float32(self.TransformToNormalised(x_testing,
                                                               np.float32(self.x_mean),
                                                               np.float32(self.x_stddev)))
@@ -245,8 +255,6 @@ class EnergyFitterCore:
             print("Predictions for test cluster (unnormalised):" , pred)
             pred = self.TransformToReal(pred,self.y_mean,self.y_stddev)
             print("Predictions for test cluster:" , pred)
-            self.DoneMinimisation=True
-
 
 
 
@@ -281,43 +289,27 @@ class EnergyFitterCore:
         filexml.NewChild(outdata, 0, "Mean",   str('%25.20f' % (self.y_mean  )))    
         filexml.NewChild(outdata, 0, "StdDev", str('%25.20f' % (self.y_stddev)))    
         
-        bias   = filexml.NewChild(mainnode, 0, "Bias");
+        bias   = filexml.NewChild(mainnode, 0, "Bias"  );
         weight = filexml.NewChild(mainnode, 0, "Weight");
-
-        weight_h1  = filexml.NewChild(weight, 0, "h1");
-        weight_out = filexml.NewChild(weight, 0, "out");
-
-        bias_b1  = filexml.NewChild(bias, 0, "b1");
-        bias_out = filexml.NewChild(bias, 0, "out");
-        print("finalweights['h1'] .shape", self.finalweights['h1'] .shape)
-        print("finalweights['out'].shape", self.finalweights['out'].shape)
-        print("finalbias   ['b1'] .shape", self.finalbias   ['b1'] .shape)
-        print("finalbias   ['out'].shape", self.finalbias   ['out'].shape)
-
-        i=0;
-        for v in self.finalbias['b1']:
-            filexml.NewChild(bias_b1, 0, "Layer_1_"+str(i), str('%25.20f' % (v)));
-            i+=1
+        print(type(self.finalbias))
+        for key, values in self.finalbias.items():
+            bias_lay = filexml.NewChild(bias, 0, key);
+            i=0;
+            for val in values:
+                filexml.NewChild(bias_lay, 0, "Layer_1_"+str(i), str('%25.20f' % (val)));
+                i+=1
             
-        i=0;
-        for v in self.finalbias['out']:
-            filexml.NewChild(bias_out, 0, "Layer_1_"+str(i), str('%25.20f' % (v)));
-            i+=1
-            
-        i=0;
-        for v in self.finalweights['h1']:
-            thisparam=filexml.NewChild(weight_h1, 0, "Param_"+str(i));
-            i+=1
-            j=0
-            for w in v:
-                filexml.NewChild(thisparam, 0, "Layer_1_"+str(j), str('%25.20f' % (w)));
-                j+=1
+        for key, values in self.finalweights.items():
+            weight_lay = filexml.NewChild(weight, 0, key)
+            i=0;
+            for param in values:
+                weight_par = filexml.NewChild(weight_lay, 0, "Param_"+str(i));
+                i+=1
+                j=0
+                for val in param:
+                    filexml.NewChild(weight_par, 0, "Layer_1_"+str(j), str('%25.20f' % (val)));
+                    j+=1
                 
-        i=0;
-        for v in self.finalweights['out']:
-            filexml.NewChild(weight_out, 0, "Layer_1_"+str(i), str('%25.20f' % (v)));
-            i+=1
-
         xmldoc = filexml.NewDoc();
         filexml.DocSetRootElement(xmldoc, mainnode);
         filexml.SaveDoc(xmldoc, name);

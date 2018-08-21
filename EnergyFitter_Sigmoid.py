@@ -22,7 +22,7 @@ np.random.seed(random_state)
 tf.set_random_seed(random_state)
 pd.options.display.max_rows = 10
 pd.options.display.float_format = '{:.3f}'.format
-clustering_df = pd.read_csv("Config5.txt", sep=",")
+clustering_df = pd.read_csv("Config2.txt", sep=",")
 clustering_df=clustering_df.sample(frac=1)
 
 def TransformToNormalised(x):
