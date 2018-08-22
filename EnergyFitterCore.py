@@ -32,11 +32,14 @@ class EnergyFitterCore:
         self.Debug=False
         self.DoneMinimisation = False
         self.DoneInputDataInitialisation = False
-        self.DoNormalisation = True
+        self.DoNormalisationInput = True
+        self.DoNormalisationOutput = True
         self.DisplayStep=100
         self.InputFile = ""
         self.InputData = pd.DataFrame()
-        
+
+        self.Name = ""
+
         self.RandomSeed = -1
         self.BatchSize = 1
         self.ActivationFunction = ""
@@ -50,7 +53,11 @@ class EnergyFitterCore:
         self.CrossValidationCost = []
         self.TrainCost = []
         self.TestCost = 0
+        
         self.Feature = []
+        self.Output  = []
+        self.nFeature = 0
+        self.nOutput  = 0
         
         self.x_cross = np.zeros(1)
         self.y_cross = np.zeros(1)
@@ -61,11 +68,11 @@ class EnergyFitterCore:
         self.FinalPredictionCrossVal = np.zeros(1)
 
         self.tf = tf
-        self.x = self.tf.placeholder("float", [None, 4])
-        self.y = self.tf.placeholder("float", [None, 1])
+        self.x = self.tf.placeholder("float", [None, None])
+        self.y = self.tf.placeholder("float", [None, None])
         
-        self.x_mean   = np.zeros(4)
-        self.x_stddev = np.ones(4)
+        self.x_mean   = np.zeros(1)
+        self.x_stddev = np.ones(1)
         self.y_mean   = 0
         self.y_stddev = 1
         self.weights = {}
@@ -73,7 +80,12 @@ class EnergyFitterCore:
 
         self.finalweights = {}
         self.finalbias    = {}
-        
+
+    def Execute(self):
+        self.InitialiseInputData()
+        self.Train()
+
+  
     def TransformToNormalised(self, x, mean, stddev):
         x_normalised = (x-mean)/stddev
         return x_normalised
@@ -88,6 +100,7 @@ class EnergyFitterCore:
         out_layer = self.tf.matmul(layer_1, weights['out'])
         out_layer = out_layer + biases['out']
         return out_layer
+    #return out_layer
     
     def InitialiseInputData(self):
         if self.InputFile=="":
@@ -99,21 +112,37 @@ class EnergyFitterCore:
         self.InputData = pd.read_csv(self.InputFile, sep=",")
         # Shuffle it
         self.InputData = self.InputData.sample(frac=1)
+        if self.Debug:
+            print(self.InputData)
+
         self.InputData = self.InputData[self.InputData['Type']==1]
 
+        if self.Debug:
+            print(self.InputData)
         # Define 2 pandas which contains the training data
         train_x = pd.DataFrame()
-        train_x['ChanWidth'] = np.float32(self.InputData.ChanWidth)
-        train_x['NHits']     = np.float32(self.InputData.NHits    )
-        train_x['SumADC']    = np.float32(self.InputData.SumADC   )
-        train_x['TimeWidth'] = np.float32(self.InputData.TimeWidth)
-        for key, dum in train_x.items():
-            self.Feature.append(key)
+        for feat in self.Feature:
+            print(feat)
+            if feat in self.InputData.columns:
+                train_x[feat] = np.float32(self.InputData[feat])
+            else:
+                print("The feature "+feat+" doesn't exist in the input data (check "+self.Name+" section in the config file).")
+                exit()
+            
         train_x = pd.concat([train_x], axis=1)
 
         train_y = pd.DataFrame()
-        train_y['ENu'] = np.float32(self.InputData.ENu)
+        for out in self.Output:
+            if feat in self.InputData.columns:
+                train_y[out] = np.float32(self.InputData[out])
+            else:
+                print("The feature "+feat+" doesn't exist in the input data (check "+self.Name+" section in the config file).")
+                exit()
+                
 
+        self.nFeature = train_x.shape[1]
+        self.nOutput  = train_y.shape[1]
+ 
         cross_cnt = floor(train_x.shape[0] * self.CrossValidationFraction)
         train_cnt = floor(train_x.shape[0] * (self.TrainingFraction+
                                               self.CrossValidationFraction))
@@ -124,27 +153,42 @@ class EnergyFitterCore:
         self.y_train = train_y.iloc[cross_cnt:train_cnt].values
         self.x_test  = train_x.iloc[train_cnt:].values
         self.y_test  = train_y.iloc[train_cnt:].values
-        
-        self.x_mean   = [np.mean(self.x_train[:,i] ) for i in range(0,4)]
-        self.x_stddev = [np.std (self.x_train[:,i] ) for i in range(0,4)]
-        self.y_mean   = np.mean(self.y_train)
-        self.y_stddev = np.std (self.y_train)
+        if self.Debug:
+            print("self.x_train ",      self.x_train)
+            print("self.y_train ",      self.y_train)
+        print(self.nFeature)
+        print(type([np.mean(self.x_train[:,i]) for i in range(0,self.nFeature)]))
 
-        if self.DoNormalisation:
-            print("Renormalising the data")
-            for i in range(0,4):
-                print(i, self.x_mean[i])
-                print(i, self.x_stddev[i])
-            self.x_train = np.float32([np.float32(self.TransformToNormalised(self.x_train[:,i], self.x_mean[i], self.x_stddev[i])) for i in range(0,4)])
-            self.x_cross = np.float32([np.float32(self.TransformToNormalised(self.x_cross[:,i], self.x_mean[i], self.x_stddev[i])) for i in range(0,4)])
-            self.x_test  = np.float32([np.float32(self.TransformToNormalised(self.x_test [:,i], self.x_mean[i], self.x_stddev[i])) for i in range(0,4)])
+        self.x_mean   = np.float32([np.mean(self.x_train[:,i]) for i in range(0,self.nFeature)])
+        self.x_stddev = np.float32([np.std (self.x_train[:,i]) for i in range(0,self.nFeature)])
+        self.y_mean   = np.float32([np.mean(self.y_train[:,i]) for i in range(0,self.nOutput)])
+        self.y_stddev = np.float32([np.std (self.y_train[:,i]) for i in range(0,self.nOutput)])
+        if self.Debug:
+            print("self.x_mean   ", self.x_mean  )
+            print("self.x_stddev ", self.x_stddev)
+            print("self.y_mean   ", self.y_mean  )
+            print("self.y_stddev ", self.y_stddev)
+        
+        if self.DoNormalisationInput:
+            print("Renormalising the input data")
+            self.x_train = [self.TransformToNormalised(self.x_train[:,i], self.x_mean[i], self.x_stddev[i]) for i in range(0,self.nFeature)]
+            self.x_cross = [self.TransformToNormalised(self.x_cross[:,i], self.x_mean[i], self.x_stddev[i]) for i in range(0,self.nFeature)]
+            self.x_test  = [self.TransformToNormalised(self.x_test [:,i], self.x_mean[i], self.x_stddev[i]) for i in range(0,self.nFeature)]
             self.x_train = np.transpose(self.x_train)
             self.x_cross = np.transpose(self.x_cross)
             self.x_test  = np.transpose(self.x_test )
-            self.y_train = np.float32(self.TransformToNormalised(self.y_train, self.y_mean, self.y_stddev))
-            self.y_cross = np.float32(self.TransformToNormalised(self.y_cross, self.y_mean, self.y_stddev))
-            self.y_test  = np.float32(self.TransformToNormalised(self.y_test , self.y_mean, self.y_stddev))
+
+        if self.DoNormalisationOutput:
+            print("Renormalising the output data")
+            self.y_train = [self.TransformToNormalised(self.y_train[:,i], self.y_mean[i], self.y_stddev[i]) for i in range(0,self.nOutput)]
+            self.y_cross = [self.TransformToNormalised(self.y_cross[:,i], self.y_mean[i], self.y_stddev[i]) for i in range(0,self.nOutput)]
+            self.y_test  = [self.TransformToNormalised(self.y_test [:,i], self.y_mean[i], self.y_stddev[i]) for i in range(0,self.nOutput)]
+            self.y_train = np.transpose(self.y_train)
+            self.y_cross = np.transpose(self.y_cross)
+            self.y_test  = np.transpose(self.y_test )
             
+            
+
         print("x_cross.shape",self.x_cross.shape)
         print("y_cross.shape",self.y_cross.shape)
         print("x_train.shape",self.x_train.shape)
@@ -158,23 +202,18 @@ class EnergyFitterCore:
 
 
     def InitialiseFitParameter(self):
-        n_input = self.x_train.shape[1]
-        print ("n_input",n_input)
-        n_classes = 1
-        
         self.weights = {
-            'h1':  self.tf.Variable(self.tf.random_normal([n_input, self.nNeuron])),
-            'out': self.tf.Variable(self.tf.random_normal([self.nNeuron, n_classes]))
+            'h1':  self.tf.Variable(self.tf.random_normal([self.nFeature, self.nNeuron])),
+            'out': self.tf.Variable(self.tf.random_normal([self.nNeuron,  self.nOutput]))
         }
         
         self.biases = {
             'b1':  self.tf.Variable(self.tf.random_normal([self.nNeuron])),
-            'out': self.tf.Variable(self.tf.random_normal([n_classes]))
+            'out': self.tf.Variable(self.tf.random_normal([self.nOutput]))
         }
-        
-        
-        self.x = self.tf.placeholder("float", [None, n_input])
-        self.y = self.tf.placeholder("float", [None, n_classes])
+                
+        self.x = self.tf.placeholder("float", [None, self.nFeature])
+        self.y = self.tf.placeholder("float", [None, self.nOutput])
         
 
 
@@ -182,7 +221,6 @@ class EnergyFitterCore:
 
         
     def Train(self):
-
         self.InitialiseFitParameter()
         predictions = self.Predictor(self.x, self.weights, self.biases)
         cost = self.tf.reduce_mean(self.tf.losses.mean_squared_error(predictions=predictions, labels=self.y))
@@ -191,28 +229,24 @@ class EnergyFitterCore:
         with self.tf.Session() as sess:
             sess.run(self.tf.global_variables_initializer())
             
-            print("Optimization for", '%d' %self.nNeuron, " neurons starting!")
+            print("Optimization for" +self.Name+ " neurons starting!")
 
             for epoch in range(self.nIteration):
+                x_batch = self.x_train
+                y_batch = self.y_train
                 if self.Debug:
                     if epoch>=1:
                         break
                     print("EPOCH",epoch)
+                    print("x_batch ",      x_batch)
+                    print("y_batch ",      y_batch)
                     print("biases ",       sess.run(self.biases['b1']))
                     print("outbias ",      sess.run(self.biases['out']))
                     print("weights[h1] ",  sess.run(self.weights['h1']))
                     print("weights[out] ", sess.run(self.weights['out']))
-                avg_cost = 0.0
-                total_batch = int(len(self.x_train) / self.BatchSize)
-                #x_batches = np.array_split(x_train, total_batch)
-                #y_batches = np.array_split(y_train, total_batch)
-                x_batch = self.x_train
-                y_batch = self.y_train
-                #for i in range(total_batch):
-                #batch_x, batch_y = x_batches[i], y_batches[i]
+
 
                 _, c_train, pred = sess.run([optimizer, cost, predictions], feed_dict={self.x: x_batch, self.y: y_batch})
-
                 if self.Debug:
                     print("ctrain ", c_train)
                     print("pred ",   pred)
@@ -224,14 +258,14 @@ class EnergyFitterCore:
                 
                 self.CrossValidationCost.append(c_cross)
                 self.TrainCost          .append(c_train)
-                avg_cost += c_train / total_batch
+                avg_cost = c_train
                 
                 if epoch % self.DisplayStep == 0 or self.Debug:
                     print("Epoch:", '%06d' % (epoch), "cost=", "{:.9f}".format(avg_cost))
 
             self.finalweights = sess.run(self.weights) 
             self.finalbias    = sess.run(self.biases )
-            print("Optimization for", '%d' %self.nNeuron, " neurons finished!")
+            print("Optimization for" +self.Name+ " neurons finished!")
             self.FinalPredictionCrossVal = sess.run(predictions, feed_dict={self.x: self.x_cross})
             self.DoneMinimisation=True
 
@@ -272,6 +306,8 @@ class EnergyFitterCore:
         param = filexml.NewChild(mainnode, 0, "Param")
 
         filexml.NewChild(param, 0, "nNeuron",    str(self.nNeuron));    
+        filexml.NewChild(param, 0, "nParam",     str(len(self.Feature)));    
+        filexml.NewChild(param, 0, "nOutput",    str(1));    
         filexml.NewChild(param, 0, "Activation", self.ActivationFunction);    
 
         indata = filexml.NewChild(mainnode, 0, "InputData")
@@ -315,3 +351,4 @@ class EnergyFitterCore:
         filexml.SaveDoc(xmldoc, name);
         filexml.FreeDoc(xmldoc);
 
+        
