@@ -51,19 +51,20 @@ class EnergyFitterPlotter:
 
             TrainingOutput[EFC] = this_output
 
-            for i in range(0,this_output['true'].shape[0]):
-                if this_output['predicted'][i]>100 or this_output['predicted'][i]<0:
-                    print("enu  ", this_output['predicted'][i])
-                    print("erec ", this_output['true'][i])
+            # for i in range(0,this_output['true'].shape[0]):
+            #     if this_output['predicted'][i]>100 or this_output['predicted'][i]<0:
+            #         print("enu  ", this_output['predicted'][i])
+            #         print("erec ", this_output['true'][i])
                     
             fig, ax = plt.subplots(figsize=(20, 12))
             fig.suptitle("Smearing")
             ax.set_xlabel('E True [MeV]')
             ax.set_ylabel('E Reco [MeV]')
-            plt.hist2d(this_output['true'],this_output['predicted'], bins=100, range=[[0,100],[0,100]],norm=colors.LogNorm())
-            plt.colorbar()
-            plt.grid(True)
-            fig.savefig(pp, format='pdf')
+            hist, xbins, ybins, im = plt.hist2d(this_output['true'],this_output['predicted'], bins=100, range=[[0,100],[0,100]],norm=colors.LogNorm())
+            if np.amin(hist) != np.amax(hist):
+                plt.colorbar()
+                plt.grid(True)
+                fig.savefig(pp, format='pdf')
 
             fig, ax = plt.subplots(figsize=(20, 12))
             fig.suptitle("Smearing")
@@ -79,7 +80,7 @@ class EnergyFitterPlotter:
         plt.subplot(2, 1, 1)
         i=0
         for EFitter, Output in TrainingOutput.items():
-            lab = '{0} neurons, {1}, '.format(EFitter.nNeuron,EFitter.ActivationFunction)
+            lab = '{0} neurons, '.format(EFitter.nNeuron)
             for f in EFitter.Feature:
                 lab+= f+" "
             sns.regplot(x=Output['true_binned'],y=Output['rms'], x_bins=bins, fit_reg=None,color=material_palette[i],
